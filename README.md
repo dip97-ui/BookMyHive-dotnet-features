@@ -7,9 +7,10 @@ A BookMyShow-style ticket booking app with a honey-and-hive theme (amber, carame
 | Layer | Technology |
 |---|---|
 | Frontend | React 18 + Vite + React Router |
-| Backend | Spring Boot 3.3 (Java 17), Spring Data JPA, Spring Security (JWT), Bean Validation |
-| Database | MySQL 8 |
-| API testing | Postman collection (51 requests with assertions) + JUnit/Mockito |
+| Backend (core) | Spring Boot 3.3 (Java 17), Spring Data JPA, Spring Security (JWT), Bean Validation |
+| Backend (extras, new) | ASP.NET Core on .NET 10 Web API (minimal APIs), EF Core 10, JWT bearer auth shared with the Java backend |
+| Database | MySQL 8 for the Java backend. The .NET service uses SQLite by default or MySQL via config |
+| API testing | Postman collection (51 requests with assertions) + JUnit/Mockito (Java), xunit integration tests (.NET) |
 
 ---
 
@@ -64,6 +65,51 @@ frontend/src
 ├── components/                        Navbar, EventCard, Poster, ResourceManager (generic CRUD UI) ...
 └── pages/                             Home, EventDetail, SeatSelection, MyBookings, AuthPage, Admin
 ```
+
+---
+
+## 2a. .NET 10 extras service (hero marquee + reviews/comments)
+
+This fork adds a second backend, a small ASP.NET Core (.NET 10) Web API in `dotnet-backend/BookMyHive.Api`. The Java backend is unchanged except for configurable seed passwords. The React frontend talks to both APIs. Full details: [DOTNET-FEATURES.md](DOTNET-FEATURES.md). Deployment notes: [DEPLOYMENT.md](DEPLOYMENT.md).
+
+```
+browser (React) --/api/*-------------------> Spring Boot (Java 17)   :8080  -> MySQL (bookmyhive)
+        |                                      issues the JWT
+        '--VITE_EXTRAS_API_URL (/api/*) ---> ASP.NET Core (.NET 10)  :5080  -> SQLite file, or MySQL (separate database)
+                                               validates the SAME JWT
+```
+
+**What the .NET service provides**
+
+| Feature | Endpoints | Who can call |
+|---|---|---|
+| Hero banners (PVR-style auto-sliding carousel on Home) | `GET /api/hero-banners`; `POST`, `DELETE /api/hero-banners/{id}` | GET public, write ADMIN |
+| Reviews (1-5 stars, one per user per event, plus summary) | `GET /api/events/{id}/reviews`, `GET .../reviews/summary`, `POST .../reviews`, `DELETE /api/reviews/{id}` | GET public, POST signed-in, DELETE ADMIN |
+| Comments (discussion thread per event) | `GET`/`POST /api/events/{id}/comments`, `DELETE /api/comments/{id}` | GET public, POST signed-in, DELETE ADMIN |
+| Health | `GET /api/health` | public |
+
+**Shared login.** The user logs in once through the Java API (`POST /api/auth/login`). The .NET service validates the same HS256 token (subject = email, `role` claim = USER or ADMIN), so no second login. Both services need the same secret, at least 32 bytes, and neither ships a default:
+
+```bash
+export JWT_SECRET="<your strong secret>"     # Java backend
+export Jwt__Secret="<same value>"            # .NET service
+export TMDB_API_KEY="<your own TMDB key>"    # Java backend (catalogue sync)
+```
+
+**Run it (after the Java backend is up)**
+
+```bash
+cd dotnet-backend/BookMyHive.Api
+dotnet run --urls http://localhost:5080      # needs the .NET 10 SDK
+```
+
+**Database.** Default is SQLite (`bookmyhive-extras.db`). To use MySQL set `Database__Provider=MySql` and `ConnectionStrings__Extras`, and give it its own database, separate from the Java one, because the schema is created by EF Core `EnsureCreated`, which skips a database that already has tables. The MySQL path (Oracle `MySql.EntityFrameworkCore` 10.0.12) was run locally against MySQL 9.7.4: tables created, data survived a restart, and a token from the Java login was accepted. It has not been run against MySQL 8.x or a hosted MySQL.
+
+**CORS.** Allowed origins come from `Cors__Origins__0`, `Cors__Origins__1`, and so on. The default is the Vite dev server (`http://localhost:5173`).
+
+**Frontend wiring.** `VITE_EXTRAS_API_URL` sets the .NET API base URL (default `http://localhost:5080/api`). `VITE_API_URL` sets the Java API base URL (default `/api`).
+
+**Tests.** `cd dotnet-backend/BookMyHive.Api.Tests && dotnet test` runs 8 xunit integration tests.
 
 ---
 
@@ -155,7 +201,7 @@ Bean Validation annotations (`@NotBlank`, `@Email`, `@Size`, `@Min/@Max`, `@Futu
 
 ## 5. Run it
 
-**Prerequisites:** Java 17+, Maven 3.9+, Node 18+, MySQL 8 running locally.
+**Prerequisites:** Java 17+, Maven 3.9+, Node 18+, MySQL 8 running locally, and the .NET 10 SDK for the extras service.
 
 ### Database & backend
 
@@ -175,6 +221,10 @@ The database `bookmyhive` is created automatically (`createDatabaseIfNotExist=tr
 
 It also inserts 9 events (6 movies, 3 plays), 6 venues in 4 cities, genres, and about 6 days of upcoming shows. Set `app.seed.enabled=false` to turn this off.
 
+### .NET extras service
+
+See section 2a. Set the same `JWT_SECRET` / `Jwt__Secret` on both services, then `dotnet run --urls http://localhost:5080` in `dotnet-backend/BookMyHive.Api`. The .NET 10 SDK is required for this step.
+
 ### Frontend
 
 ```bash
@@ -189,7 +239,9 @@ npm run dev        # http://localhost:5173  (proxies /api to localhost:8080)
 
 **Postman.** Import `postman/BookMyHive.postman_collection.json`, then run the collection (Runner, top to bottom). It contains 51 requests in 6 folders (auth, public catalogue, admin CRUD, authorization checks, bookings, cleanup). Each request has a test script that asserts the status code and key fields, and tokens and IDs are passed between requests through collection variables. The run covers the happy paths and the error cases 400, 401, 403, 404 and 409.
 
-**Unit tests.** `cd backend && mvn test` runs `BookingServiceTest` (Mockito): total price calculation, seat conflict detection, out-of-layout seats, started shows, cancel by owner, cancel by another user (denied) and by admin (allowed).
+**.NET tests.** `cd dotnet-backend/BookMyHive.Api.Tests && dotnet test` runs 8 xunit integration tests covering health, hero banners (admin-only management), reviews (token required, duplicate = 409, rating range), comments, and rejection of a forged token.
+
+**Unit tests (Java).** `cd backend && mvn test` runs `BookingServiceTest` (Mockito): total price calculation, seat conflict detection, out-of-layout seats, started shows, cancel by owner, cancel by another user (denied) and by admin (allowed).
 
 ---
 
@@ -206,8 +258,9 @@ npm run dev        # http://localhost:5173  (proxies /api to localhost:8080)
 | 7 | Layered architecture | controller / service / repository / entity / dto / mapper |
 | 8 | Validation & exceptions | DTO annotations, `exception/GlobalExceptionHandler` |
 | 9 | Auth & authorization | `security/`, `config/SecurityConfig`, `@PreAuthorize` |
-| 10 | Testing | `postman/`, `src/test` |
+| 10 | Testing | `postman/`, `src/test`, `dotnet-backend/BookMyHive.Api.Tests` |
 | 11 | Code quality | Records for DTOs, constructor injection, small single-purpose classes, Javadoc on non-obvious rules |
+| 12 | .NET extras (new) | Section 2a, `dotnet-backend/` |
 
 ## 8. Ideas for future work
 
