@@ -37,6 +37,13 @@ public class DataSeeder implements CommandLineRunner {
     private final PasswordEncoder passwordEncoder;
     private final com.bookmyhive.service.TmdbSyncService tmdbSyncService;
 
+    // Override in any shared/public deployment (SEED_ADMIN_PASSWORD / SEED_USER_PASSWORD).
+    // Local-dev defaults are kept so the README demo logins still work.
+    @org.springframework.beans.factory.annotation.Value("${app.seed.admin-password:Admin@123}")
+    private String adminPassword;
+    @org.springframework.beans.factory.annotation.Value("${app.seed.user-password:User@123}")
+    private String userPassword;
+
     @Override
     @Transactional
     public void run(String... args) {
@@ -44,8 +51,8 @@ public class DataSeeder implements CommandLineRunner {
             tmdbSyncService.syncUpcomingMoviesIfConfigured();
             return;
         }
-        createUser("Hive Admin", "admin@bookmyhive.com", "Admin@123", Role.ADMIN);
-        createUser("Demo User", "user@bookmyhive.com", "User@123", Role.USER);
+        createUser("Hive Admin", "admin@bookmyhive.com", adminPassword, Role.ADMIN);
+        createUser("Demo User", "user@bookmyhive.com", userPassword, Role.USER);
 
         Map<String, Genre> genres = new HashMap<>();
         for (String name : List.of("Drama", "Comedy", "Thriller", "Romance", "Sci-Fi", "Crime", "Adventure", "Musical", "Action", "Horror", "Fantasy")) {
@@ -74,7 +81,7 @@ public class DataSeeder implements CommandLineRunner {
         createShows(plays, venues);
 
         tmdbSyncService.syncUpcomingMovies(10, null);
-        log.info("Seeded demo data: venues, plays and TMDB upcoming movies. Admin login: admin@bookmyhive.com / Admin@123");
+        log.info("Seeded demo data: venues, plays and TMDB upcoming movies. Admin login: admin@bookmyhive.com");
     }
 
     private void createUser(String name, String email, String rawPassword, Role role) {
