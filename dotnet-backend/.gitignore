@@ -1,0 +1,7 @@
+bin/
+obj/
+*.db
+*.db-shm
+*.db-wal
+# Local dev file carries the Java backend's JWT secret for shared-auth testing; never commit.
+BookMyHive.Api/appsettings.Development.json
