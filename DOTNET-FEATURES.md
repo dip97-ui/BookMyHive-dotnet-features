@@ -75,11 +75,9 @@ With an ADMIN token from the Java login (`POST /api/auth/login`):
 
 ## Database: proven vs configured
 
-- SQLite (default, file `bookmyhive-extras.db`) is what was run and tested locally.
-- MySQL 8 is CONFIGURED but NOT runtime-tested: set `Database:Provider=MySql` and
-  `ConnectionStrings:Extras`. Note: Pomelo (the usual MySQL EF provider) has no
-  EF Core 10 build yet, so the MySQL path uses Oracle's official
-  `MySql.EntityFrameworkCore` 10.0.12. Schema is created automatically on startup.
+- SQLite (default, file `bookmyhive-extras.db`) is what the 8 automated tests use.
+- MySQL: run locally against MySQL 9.7.4 with the Oracle `MySql.EntityFrameworkCore` 10.0.12 provider (Pomelo has no EF Core 10 build yet). Tables were created, a review survived a service restart, and a token issued by the Java login was accepted. Not yet run against MySQL 8.x or a hosted MySQL.
+- Set `Database:Provider=MySql` and `ConnectionStrings:Extras`. Use a database separate from the Java one: `EnsureCreated` skips a database that already has tables.
 
 ## Notes / limits
 
