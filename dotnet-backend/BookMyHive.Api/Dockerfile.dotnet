@@ -1,0 +1,11 @@
+# build context: dotnet-backend/BookMyHive.Api/
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+WORKDIR /src
+COPY . .
+RUN dotnet publish -c Release -o /out
+
+FROM mcr.microsoft.com/dotnet/aspnet:10.0
+WORKDIR /app
+COPY --from=build /out .
+ENV DOTNET_gcServer=0 DOTNET_GCHeapHardLimit=0x10000000
+CMD ["sh","-c","ASPNETCORE_URLS=http://0.0.0.0:${PORT:-8080} dotnet BookMyHive.Api.dll"]
