@@ -204,10 +204,6 @@ public class TmdbSyncService {
 
     private List<Event> applyMoviesToDatabase(List<MovieData> moviesToSync) {
         List<Venue> venues = venueRepository.findAll();
-        List<Event> existingMovies = eventRepository.findAll().stream()
-                .filter(e -> e.getType() == EventType.MOVIE)
-                .sorted(Comparator.comparing(Event::getId))
-                .toList();
 
         List<Event> savedEvents = new ArrayList<>();
 
@@ -222,10 +218,9 @@ public class TmdbSyncService {
 
             if (matched.isPresent()) {
                 event = matched.get();
-            } else if (i < existingMovies.size()) {
-                // Update placeholder movies in-place
-                event = existingMovies.get(i);
             } else {
+                // Never overwrite an existing catalogue entry positionally: an unmatched
+                // movie is inserted as a NEW event, so a booked event can never be retitled.
                 event = new Event();
                 event.setType(EventType.MOVIE);
             }
