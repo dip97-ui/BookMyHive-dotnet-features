@@ -16,12 +16,13 @@ export default function Home() {
 
   const [events, setEvents] = useState(null);
   const [featured, setFeatured] = useState([]);
+  const [catalogue, setCatalogue] = useState([]);
   const [genres, setGenres] = useState([]);
   const [error, setError] = useState('');
 
   useEffect(() => {
     api.get('/genres').then(setGenres).catch(() => {});
-    api.get('/events').then((all) => setFeatured([...all].sort((a, b) => b.rating - a.rating).slice(0, 3))).catch(() => {});
+    api.get('/events').then((all) => { setCatalogue(all); setFeatured([...all].sort((a, b) => b.rating - a.rating).slice(0, 3)); }).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -41,7 +42,7 @@ export default function Home() {
 
   return (
     <main>
-      {!filtered && <HeroMarquee fallbackEvents={featured} />}
+      {!filtered && <HeroMarquee fallbackEvents={catalogue} />}
       {!filtered && (
         <section className="hero">
           <div className="hero__text">
