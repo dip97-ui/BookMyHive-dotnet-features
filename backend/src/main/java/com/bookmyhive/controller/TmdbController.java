@@ -51,7 +51,7 @@ public class TmdbController {
         } else if (result.updated() > 0) {
             message = "Sync complete: no new movies to add; " + result.updated() + " existing movie(s) refreshed";
         } else {
-            message = "No new movies to add - your catalogue already has every title TMDB lists for your region right now";
+            message = "No new movies found in the pages checked - try again later as TMDB lists new titles for your region";
         }
         return ResponseEntity.ok(Map.of(
                 "message", message,
