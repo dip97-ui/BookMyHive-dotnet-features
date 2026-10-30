@@ -308,3 +308,14 @@ input[aria-invalid='true'], select[aria-invalid='true'], textarea[aria-invalid='
   .marquee__dot { width: 12px; height: 12px; box-shadow: 0 0 3px rgba(0,0,0,0.9); }
   .marquee__content { bottom: 22%; }
 }
+
+/* ---------- Catalogue pagination ---------- */
+.pager { display: flex; align-items: center; justify-content: center; gap: .75rem 1rem; margin-top: 2rem; flex-wrap: wrap; }
+.pager__pages { display: flex; flex-wrap: wrap; justify-content: center; gap: .35rem; }
+.pager__slot { display: inline-flex; align-items: center; gap: .35rem; }
+.pager__btn, .pager__num { background: var(--paper); border: 2px solid var(--line); color: var(--ink); font: 600 .88rem var(--font-body); padding: .35rem .85rem; border-radius: 999px; cursor: pointer; }
+.pager__num { min-width: 2.4rem; }
+.pager__btn:hover:not(:disabled), .pager__num:hover { border-color: var(--amber); }
+.pager__num.is-on { background: var(--ink); border-color: var(--ink); color: var(--honey); }
+.pager__btn:disabled { opacity: .4; cursor: default; }
+.pager__gap { color: var(--muted); padding: 0 .1rem; }
