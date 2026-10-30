@@ -62,7 +62,6 @@ export default function AuthPage({ mode }) {
         <p className="muted">
           {isLogin ? <>New here? <Link to="/register" state={state}>Create an account</Link></> : <>Already registered? <Link to="/login" state={state}>Log in</Link></>}
         </p>
-        {isLogin && <p className="demo">Demo logins: <code>user@bookmyhive.com</code> / <code>User@123</code> or admin <code>admin@bookmyhive.com</code> / <code>Admin@123</code></p>}
       </form>
     </main>
   );
