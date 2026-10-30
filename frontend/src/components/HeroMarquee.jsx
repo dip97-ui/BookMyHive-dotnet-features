@@ -19,6 +19,7 @@ export default function HeroMarquee({ fallbackEvents = [] }) {
   const [banners, setBanners] = useState(null);
   const [index, setIndex] = useState(0);
   const [paused, setPaused] = useState(false);
+  const [broken, setBroken] = useState(() => new Set());
   // Ticking clock so the featured window rotates even while the page stays open.
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -71,8 +72,16 @@ export default function HeroMarquee({ fallbackEvents = [] }) {
     >
       <div className="marquee__track" style={{ transform: `translateX(-${current * 100}%)` }}>
         {slides.map((s) => (
-          <div className="marquee__slide" key={s.key}>
-            <img src={s.image} alt="" className="marquee__bg" loading="lazy" />
+          <div className={`marquee__slide${broken.has(s.key) ? ' marquee__slide--noimg' : ''}`} key={s.key}>
+            {!broken.has(s.key) && (
+              <img
+                src={s.image}
+                alt=""
+                className="marquee__bg"
+                loading="lazy"
+                onError={() => setBroken((prev) => new Set(prev).add(s.key))}
+              />
+            )}
             <div className="marquee__scrim" />
             <div className="marquee__content">
               <h2>{s.title}</h2>
