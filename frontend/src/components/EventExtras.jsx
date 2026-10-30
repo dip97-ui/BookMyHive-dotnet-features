@@ -100,7 +100,7 @@ export default function EventExtras({ eventId }) {
           <h3>{mine ? 'Your review is posted' : 'Write a review'}</h3>
           {!mine && (
             <>
-              <StarPicker value={rating} onChange={setRating} />
+              <div className="stars__row"><span className="stars__label">Your rating:</span><StarPicker value={rating} onChange={setRating} /></div>
               <input type="text" placeholder="Headline (optional)" value={reviewTitle}
                 maxLength={120} onChange={(e) => setReviewTitle(e.target.value)} />
               <textarea placeholder="How was it?" rows={3} value={reviewBody} required
