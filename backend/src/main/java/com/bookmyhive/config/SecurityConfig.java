@@ -55,7 +55,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers("/api/auth/**").permitAll()
-                        .requestMatchers("/api/tmdb/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/tmdb/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/events/**", "/api/shows/**",
                                 "/api/venues/**", "/api/genres/**").permitAll()
                         .anyRequest().authenticated())
