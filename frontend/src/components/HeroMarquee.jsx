@@ -67,7 +67,7 @@ export default function HeroMarquee({ fallbackEvents = [] }) {
       className="marquee"
       aria-roledescription="carousel"
       aria-label="Featured titles"
-      onMouseEnter={() => setPaused(true)}
+      onMouseEnter={() => { if (window.matchMedia('(hover: hover)').matches) setPaused(true); }}
       onMouseLeave={() => setPaused(false)}
     >
       <div className="marquee__track" style={{ transform: `translateX(-${current * 100}%)` }}>
