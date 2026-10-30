@@ -8,6 +8,7 @@ import com.bookmyhive.service.TmdbService;
 import com.bookmyhive.service.TmdbSyncService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -37,6 +38,7 @@ public class TmdbController {
     }
 
     @PostMapping("/sync")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Map<String, Object>> sync(
             @RequestParam(defaultValue = "10") int limit,
             @RequestParam(required = false) String apiKey) {
