@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api, qs } from '../api.js';
 import EventCard from '../components/EventCard.jsx';
@@ -6,6 +6,15 @@ import HeroMarquee from '../components/HeroMarquee.jsx';
 import Poster from '../components/Poster.jsx';
 
 const LANGUAGES = ['Hindi', 'English', 'Marathi', 'Tamil'];
+const PAGE_SIZE = 10;
+
+function pageNumbers(total, current) {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+  const keep = new Set(
+    [1, 2, current - 1, current, current + 1, total - 1, total].filter((n) => n >= 1 && n <= total)
+  );
+  return [...keep].sort((a, b) => a - b);
+}
 
 export default function Home() {
   const [params, setParams] = useSearchParams();
@@ -13,12 +22,14 @@ export default function Home() {
   const q = params.get('q') || '';
   const genre = params.get('genre') || '';
   const language = params.get('language') || '';
+  const pageParam = Math.max(1, parseInt(params.get('page'), 10) || 1);
 
   const [events, setEvents] = useState(null);
   const [featured, setFeatured] = useState([]);
   const [catalogue, setCatalogue] = useState([]);
   const [genres, setGenres] = useState([]);
   const [error, setError] = useState('');
+  const listTop = useRef(null);
 
   useEffect(() => {
     api.get('/genres').then(setGenres).catch(() => {});
@@ -34,11 +45,24 @@ export default function Home() {
   const setFilter = (key, value) => {
     const next = new URLSearchParams(params);
     if (value) next.set(key, value); else next.delete(key);
+    next.delete('page');
     setParams(next);
+  };
+
+  const goToPage = (n) => {
+    const next = new URLSearchParams(params);
+    if (n <= 1) next.delete('page'); else next.set('page', String(n));
+    setParams(next);
+    listTop.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
   const heading = q ? `Results for “${q}”` : type === 'PLAY' ? 'Plays on stage' : type === 'MOVIE' ? 'Movies in cinemas' : 'Now showing';
   const filtered = !!(type || q || genre || language);
+
+  const totalPages = events ? Math.max(1, Math.ceil(events.length / PAGE_SIZE)) : 1;
+  const page = Math.min(pageParam, totalPages);
+  const pageEvents = events ? events.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE) : [];
+  const numbers = pageNumbers(totalPages, page);
 
   return (
     <main>
@@ -64,7 +88,7 @@ export default function Home() {
       )}
 
       <div className="page">
-        <div className="filters">
+        <div className="filters" ref={listTop}>
           <h2>{heading}</h2>
           <div className="filters__row">
             <div className="chips" role="group" aria-label="Genre">
@@ -94,7 +118,30 @@ export default function Home() {
           </div>
         )}
         {events && events.length > 0 && (
-          <div className="grid">{events.map((e) => <EventCard key={e.id} event={e} />)}</div>
+          <>
+            <div className="grid">{pageEvents.map((e) => <EventCard key={e.id} event={e} />)}</div>
+            {totalPages > 1 && (
+              <nav className="pager" aria-label="Catalogue pages">
+                <button className="pager__btn" disabled={page === 1} onClick={() => goToPage(page - 1)}>&lsaquo; Previous</button>
+                <div className="pager__pages">
+                  {numbers.map((n, i) => (
+                    <span key={n} className="pager__slot">
+                      {i > 0 && n - numbers[i - 1] > 1 && <span className="pager__gap" aria-hidden="true">&hellip;</span>}
+                      <button
+                        className={`pager__num ${n === page ? 'is-on' : ''}`}
+                        aria-current={n === page ? 'page' : undefined}
+                        aria-label={`Page ${n}`}
+                        onClick={() => goToPage(n)}
+                      >
+                        {n}
+                      </button>
+                    </span>
+                  ))}
+                </div>
+                <button className="pager__btn" disabled={page === totalPages} onClick={() => goToPage(page + 1)}>Next &rsaquo;</button>
+              </nav>
+            )}
+          </>
         )}
       </div>
     </main>
