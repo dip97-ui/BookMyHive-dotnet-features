@@ -282,10 +282,12 @@ input[aria-invalid='true'], select[aria-invalid='true'], textarea[aria-invalid='
 .review__head { display: flex; align-items: center; gap: 0.7rem; margin-bottom: 0.25rem; }
 .review__title { font-weight: 600; margin: 0.2rem 0; }
 .review p, .comment p { margin: 0.25rem 0 0; }
-.stars { color: rgba(255,255,255,0.25); letter-spacing: 2px; }
-.star--on { color: var(--honey, #f5b301); }
-.star--btn { background: none; border: 0; font-size: 1.4rem; cursor: pointer; color: rgba(255,255,255,0.25); padding: 0 2px; }
-.star--btn.star--on { color: var(--honey, #f5b301); }
+.stars { color: rgba(43,23,10,0.22); letter-spacing: 2px; }
+.star--on { color: var(--amber, #f2a900); }
+.stars__row { display: flex; align-items: center; gap: 0.6rem; }
+.stars__label { font-weight: 600; }
+.star--btn { background: none; border: 0; font-size: 1.9rem; line-height: 1.2; cursor: pointer; color: rgba(43,23,10,0.28); padding: 0 6px; }
+.star--btn.star--on { color: var(--amber, #f2a900); }
 
 @media (max-width: 720px) {
   .marquee__slide { aspect-ratio: 16 / 9; }
