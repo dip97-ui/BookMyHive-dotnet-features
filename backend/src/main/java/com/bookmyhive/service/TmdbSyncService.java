@@ -72,16 +72,21 @@ public class TmdbSyncService {
         }
     }
 
+    public record SyncResult(List<Event> events, int added, int updated) {
+    }
+
+    private static final int MAX_PAGES_PER_LIST = 3;
+
     @Transactional
-    public List<Event> syncUpcomingMovies(int limit, String apiKeyOverride) {
-        List<MovieData> moviesToSync = new ArrayList<>();
+    public SyncResult syncUpcomingMovies(int limit, String apiKeyOverride) {
+        List<MovieData> moviesToSync = null;
 
         if (tmdbService.isConfigured() || (apiKeyOverride != null && !apiKeyOverride.isBlank())) {
             log.info("Fetching real upcoming movies from TMDB API...");
             moviesToSync = fetchFromTmdb(limit, apiKeyOverride);
         }
 
-        if (moviesToSync.isEmpty()) {
+        if (moviesToSync == null) {
             log.info("No live TMDB results received or key not set. Using verified upcoming movies catalog.");
             moviesToSync = getFallbackUpcomingMovies();
         }
@@ -92,109 +97,30 @@ public class TmdbSyncService {
     private List<MovieData> fetchFromTmdb(int limit, String apiKeyOverride) {
         List<MovieData> list = new ArrayList<>();
         try {
-            // First fetch upcoming movies in region (e.g. IN)
-            TmdbDto.UpcomingResponse upcoming = tmdbService.fetchUpcomingMovies(1, apiKeyOverride);
-            List<TmdbDto.MovieSummary> summaries = new ArrayList<>();
-            if (upcoming != null && upcoming.results() != null) {
-                summaries.addAll(upcoming.results());
-            }
-
-            // Supplement with now playing in region if list is small
-            if (summaries.size() < limit) {
-                TmdbDto.UpcomingResponse nowPlaying = tmdbService.fetchNowPlayingMovies(1, apiKeyOverride);
-                if (nowPlaying != null && nowPlaying.results() != null) {
-                    Set<Long> existingIds = summaries.stream().map(TmdbDto.MovieSummary::id).collect(Collectors.toSet());
-                    for (TmdbDto.MovieSummary s : nowPlaying.results()) {
-                        if (!existingIds.contains(s.id())) {
-                            summaries.add(s);
-                        }
-                    }
+            Set<Long> knownTmdbIds = new HashSet<>();
+            Set<String> knownTitles = new HashSet<>();
+            for (Event existing : eventRepository.findAll()) {
+                if (existing.getTmdbId() != null) {
+                    knownTmdbIds.add(existing.getTmdbId());
+                }
+                if (existing.getTitle() != null) {
+                    knownTitles.add(existing.getTitle().toLowerCase(Locale.ROOT));
                 }
             }
+            Set<Long> seenThisRun = new HashSet<>();
 
-            int count = 0;
-            for (TmdbDto.MovieSummary summary : summaries) {
-                if (summary.posterPath() == null || summary.posterPath().isBlank()) {
-                    continue;
-                }
-                if (count >= limit) {
-                    break;
-                }
+            // Page through upcoming movies in region (e.g. IN), keeping only titles
+            // that are not already in the catalogue, until we have `limit` new ones.
+            boolean upcomingOk = collectNewMovies(list, limit, knownTmdbIds, knownTitles, seenThisRun,
+                    true, apiKeyOverride);
+            if (!upcomingOk) {
+                return null; // upstream failure - caller falls back to the verified catalog
+            }
 
-                TmdbDto.MovieDetail details = tmdbService.fetchMovieDetails(summary.id(), apiKeyOverride);
-
-                String title = summary.title() != null ? summary.title() : (details != null ? details.title() : "Untitled");
-                String overview = (summary.overview() != null && !summary.overview().isBlank())
-                        ? summary.overview()
-                        : (details != null && details.overview() != null && !details.overview().isBlank())
-                        ? details.overview()
-                        : "Experience this highly anticipated upcoming cinema release on the big screen.";
-
-                if (overview.length() > 1900) {
-                    overview = overview.substring(0, 1900) + "...";
-                }
-
-                Double voteAvg = summary.voteAverage() != null && summary.voteAverage() > 0 ? summary.voteAverage() : 7.6;
-                double rating = Math.round(voteAvg * 10.0) / 10.0;
-
-                String posterUrl = tmdbService.buildPosterUrl(summary.posterPath());
-                String backdropUrl = tmdbService.buildBackdropUrl(summary.backdropPath());
-
-                LocalDate releaseDate = LocalDate.now().plusDays(7);
-                if (summary.releaseDate() != null && !summary.releaseDate().isBlank()) {
-                    try {
-                        releaseDate = LocalDate.parse(summary.releaseDate());
-                    } catch (Exception ignored) {
-                    }
-                }
-
-                int runtime = details != null && details.runtime() != null && details.runtime() > 0 ? details.runtime() : 135;
-                String language = TmdbService.mapLanguage(summary.originalLanguage());
-
-                String director = null;
-                String cast = null;
-                if (details != null && details.credits() != null) {
-                    if (details.credits().crew() != null) {
-                        director = details.credits().crew().stream()
-                                .filter(c -> "Director".equalsIgnoreCase(c.job()))
-                                .map(TmdbDto.CrewItem::name)
-                                .findFirst()
-                                .orElse(null);
-                    }
-                    if (details.credits().cast() != null) {
-                        cast = details.credits().cast().stream()
-                                .map(TmdbDto.CastItem::name)
-                                .limit(5)
-                                .collect(Collectors.joining(", "));
-                    }
-                }
-
-                Set<String> genreNames = new LinkedHashSet<>();
-                if (details != null && details.genres() != null && !details.genres().isEmpty()) {
-                    details.genres().forEach(g -> genreNames.add(g.name()));
-                } else if (summary.genreIds() != null) {
-                    summary.genreIds().forEach(gid -> genreNames.add(TmdbService.mapGenreId(gid)));
-                }
-                if (genreNames.isEmpty()) {
-                    genreNames.add("Drama");
-                }
-
-                list.add(new MovieData(
-                        summary.id(),
-                        title,
-                        overview,
-                        language,
-                        runtime,
-                        "UA",
-                        rating,
-                        posterUrl,
-                        backdropUrl,
-                        releaseDate,
-                        cast,
-                        director,
-                        genreNames
-                ));
-                count++;
+            // Supplement with now playing in region if we still need more new titles.
+            if (list.size() < limit) {
+                collectNewMovies(list, limit, knownTmdbIds, knownTitles, seenThisRun,
+                        false, apiKeyOverride);
             }
         } catch (Exception e) {
             log.error("Error building movie data from TMDB: {}", e.getMessage(), e);
@@ -202,10 +128,135 @@ public class TmdbSyncService {
         return list;
     }
 
-    private List<Event> applyMoviesToDatabase(List<MovieData> moviesToSync) {
+    private boolean collectNewMovies(List<MovieData> list, int limit,
+            Set<Long> knownTmdbIds, Set<String> knownTitles, Set<Long> seenThisRun,
+            boolean upcoming, String apiKeyOverride) {
+        int page = 1;
+        while (list.size() < limit && page <= MAX_PAGES_PER_LIST) {
+            TmdbDto.UpcomingResponse response = upcoming
+                    ? tmdbService.fetchUpcomingMovies(page, apiKeyOverride)
+                    : tmdbService.fetchNowPlayingMovies(page, apiKeyOverride);
+            if (response == null || response.results() == null) {
+                // Page-1 failure means the upstream/key is broken; later pages just stop the walk.
+                return page != 1;
+            }
+            if (response.results().isEmpty()) {
+                return true;
+            }
+            for (TmdbDto.MovieSummary summary : response.results()) {
+                if (list.size() >= limit) {
+                    break;
+                }
+                if (summary.id() == null || !seenThisRun.add(summary.id())) {
+                    continue;
+                }
+                if (summary.posterPath() == null || summary.posterPath().isBlank()) {
+                    continue;
+                }
+                // Skip duplicates: anything already in the catalogue stays untouched.
+                if (knownTmdbIds.contains(summary.id())) {
+                    continue;
+                }
+                if (summary.title() != null && knownTitles.contains(summary.title().toLowerCase(Locale.ROOT))) {
+                    continue;
+                }
+                MovieData data = buildMovieData(summary, apiKeyOverride);
+                list.add(data);
+                knownTmdbIds.add(summary.id());
+                if (data.title() != null) {
+                    knownTitles.add(data.title().toLowerCase(Locale.ROOT));
+                }
+            }
+            if (response.totalPages() != null && page >= response.totalPages()) {
+                return true; // source list exhausted - no more pages exist
+            }
+            page++;
+        }
+        return true;
+    }
+
+    private MovieData buildMovieData(TmdbDto.MovieSummary summary, String apiKeyOverride) {
+        TmdbDto.MovieDetail details = tmdbService.fetchMovieDetails(summary.id(), apiKeyOverride);
+
+        String title = summary.title() != null ? summary.title() : (details != null ? details.title() : "Untitled");
+        String overview = (summary.overview() != null && !summary.overview().isBlank())
+                ? summary.overview()
+                : (details != null && details.overview() != null && !details.overview().isBlank())
+                ? details.overview()
+                : "Experience this highly anticipated upcoming cinema release on the big screen.";
+
+        if (overview.length() > 1900) {
+            overview = overview.substring(0, 1900) + "...";
+        }
+
+        Double voteAvg = summary.voteAverage() != null && summary.voteAverage() > 0 ? summary.voteAverage() : 7.6;
+        double rating = Math.round(voteAvg * 10.0) / 10.0;
+
+        String posterUrl = tmdbService.buildPosterUrl(summary.posterPath());
+        String backdropUrl = tmdbService.buildBackdropUrl(summary.backdropPath());
+
+        LocalDate releaseDate = LocalDate.now().plusDays(7);
+        if (summary.releaseDate() != null && !summary.releaseDate().isBlank()) {
+            try {
+                releaseDate = LocalDate.parse(summary.releaseDate());
+            } catch (Exception ignored) {
+            }
+        }
+
+        int runtime = details != null && details.runtime() != null && details.runtime() > 0 ? details.runtime() : 135;
+        String language = TmdbService.mapLanguage(summary.originalLanguage());
+
+        String director = null;
+        String cast = null;
+        if (details != null && details.credits() != null) {
+            if (details.credits().crew() != null) {
+                director = details.credits().crew().stream()
+                        .filter(c -> "Director".equalsIgnoreCase(c.job()))
+                        .map(TmdbDto.CrewItem::name)
+                        .findFirst()
+                        .orElse(null);
+            }
+            if (details.credits().cast() != null) {
+                cast = details.credits().cast().stream()
+                        .map(TmdbDto.CastItem::name)
+                        .limit(5)
+                        .collect(Collectors.joining(", "));
+            }
+        }
+
+        Set<String> genreNames = new LinkedHashSet<>();
+        if (details != null && details.genres() != null && !details.genres().isEmpty()) {
+            details.genres().forEach(g -> genreNames.add(g.name()));
+        } else if (summary.genreIds() != null) {
+            summary.genreIds().forEach(gid -> genreNames.add(TmdbService.mapGenreId(gid)));
+        }
+        if (genreNames.isEmpty()) {
+            genreNames.add("Drama");
+        }
+
+        return new MovieData(
+                summary.id(),
+                title,
+                overview,
+                language,
+                runtime,
+                "UA",
+                rating,
+                posterUrl,
+                backdropUrl,
+                releaseDate,
+                cast,
+                director,
+                genreNames
+        );
+    }
+
+    private SyncResult applyMoviesToDatabase(List<MovieData> moviesToSync) {
         List<Venue> venues = venueRepository.findAll();
 
         List<Event> savedEvents = new ArrayList<>();
+        int added = 0;
+        int updated = 0;
 
         for (int i = 0; i < moviesToSync.size(); i++) {
             MovieData data = moviesToSync.get(i);
@@ -218,13 +269,14 @@ public class TmdbSyncService {
 
             if (matched.isPresent()) {
                 event = matched.get();
+                updated++;
             } else {
                 // Never overwrite an existing catalogue entry positionally: an unmatched
                 // movie is inserted as a NEW event, so a booked event can never be retitled.
                 event = new Event();
                 event.setType(EventType.MOVIE);
+                added++;
             }
-
             event.setTitle(data.title());
             event.setType(EventType.MOVIE);
             event.setDescription(data.description());
@@ -256,8 +308,8 @@ public class TmdbSyncService {
             }
         }
 
-        log.info("Saved {} TMDB upcoming movies into the database", savedEvents.size());
-        return savedEvents;
+        log.info("TMDB sync applied: {} new movie(s) added, {} existing updated", added, updated);
+        return new SyncResult(savedEvents, added, updated);
     }
 
     private void createShowsForEvent(Event event, List<Venue> venues, int index) {
