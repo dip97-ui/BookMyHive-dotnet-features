@@ -42,11 +42,22 @@ public class TmdbController {
     public ResponseEntity<Map<String, Object>> sync(
             @RequestParam(defaultValue = "10") int limit,
             @RequestParam(required = false) String apiKey) {
-        List<Event> synced = tmdbSyncService.syncUpcomingMovies(limit, apiKey);
-        List<EventDto.Response> dtos = synced.stream().map(EntityMapper::toEvent).toList();
+        TmdbSyncService.SyncResult result = tmdbSyncService.syncUpcomingMovies(limit, apiKey);
+        List<EventDto.Response> dtos = result.events().stream().map(EntityMapper::toEvent).toList();
+        String message;
+        if (result.added() > 0) {
+            message = "Sync complete: " + result.added() + " new movie(s) added"
+                    + (result.updated() > 0 ? ", " + result.updated() + " existing refreshed" : "");
+        } else if (result.updated() > 0) {
+            message = "Sync complete: no new movies to add; " + result.updated() + " existing movie(s) refreshed";
+        } else {
+            message = "No new movies to add - your catalogue already has every title TMDB lists for your region right now";
+        }
         return ResponseEntity.ok(Map.of(
-                "message", "Successfully synchronized " + synced.size() + " upcoming movies from TMDB",
-                "count", synced.size(),
+                "message", message,
+                "count", result.added() + result.updated(),
+                "added", result.added(),
+                "updated", result.updated(),
                 "movies", dtos
         ));
     }
